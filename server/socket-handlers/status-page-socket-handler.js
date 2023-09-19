@@ -7,6 +7,7 @@ const Database = require("../database");
 const apicache = require("../modules/apicache");
 const StatusPage = require("../model/status_page");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
+const fetch = require("node-fetch");
 
 /**
  * Socket handlers for status page
@@ -57,6 +58,20 @@ module.exports.statusPageSocketHandler = (socket) => {
 
             await R.store(incidentBean);
 
+            if (process.env.INCIDENT_WEBHOOK_URL) {
+                try {
+                    await fetch(process.env.INCIDENT_WEBHOOK_URL, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            action: "incident-created",
+                            incident: incidentBean.toPublicJSON()
+                        }),
+                    });
+                } catch (error) {
+                    log.error("failed to post incident to webhook", error);
+                }
+            }
+
             callback({
                 ok: true,
                 incident: incidentBean.toPublicJSON(),
@@ -78,6 +93,19 @@ module.exports.statusPageSocketHandler = (socket) => {
             await R.exec("UPDATE incident SET pin = 0 WHERE pin = 1 AND status_page_id = ? ", [
                 statusPageID
             ]);
+
+            if (process.env.INCIDENT_WEBHOOK_URL) {
+                try {
+                    await fetch(process.env.INCIDENT_WEBHOOK_URL, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            action: "incident-resolved"
+                        }),
+                    });
+                } catch (error) {
+                    log.error("failed to post unpinned incident to webhook", error);
+                }
+            }
 
             callback({
                 ok: true,
